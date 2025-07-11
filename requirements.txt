@@ -1,0 +1,11 @@
+langchain-groq
+langchain 
+fastapi
+uvicorn
+langchain_community
+langgraph
+python-multipart
+docx2txt
+sentence-transformers
+# faiss-gpu
+faiss-cpu
