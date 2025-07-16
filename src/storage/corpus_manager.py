@@ -14,4 +14,4 @@ def load_vectorstore(corpus_name: str):
     path = f"{settings.VECTOR_DB_DIR}/{corpus_name}"
     if not os.path.exists(path):
         raise FileNotFoundError(f"Vectorstore for corpus '{corpus_name}' not found.")
-    return FAISS.load_local(path, get_embeddings())
+    return FAISS.load_local(path, get_embeddings(), allow_dangerous_deserialization=True)
