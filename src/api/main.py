@@ -23,7 +23,7 @@ rag_pipeline = RAGPipeline()
 class Question(BaseModel):
     question: str
 
-@app.post("/api/upload-docs/")
+@app.post("/api/upload-docs")
 def upload_docs(
     corpus_name: str = Query(...),
     files: List[UploadFile] = File(...),
@@ -43,7 +43,7 @@ def upload_docs(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/ask/")
+@app.post("/api/ask")
 def ask_question(payload: Question, api_key: str = Depends(validate_api_key)):
     try:
         response = rag_pipeline.ask(payload.question)
