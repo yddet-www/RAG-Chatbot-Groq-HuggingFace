@@ -2,10 +2,11 @@
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from os.path import isfile, join, isdir
 import os
 import shutil
 from src.pipeline.rag_pipeline import RAGPipeline
-from src.utils.auth import validate_api_key
+from src.utils.auth import validate_api_key, validate_password
 from src.utils.chatlog import log_interaction
 from typing import List
 from fastapi import UploadFile, File
@@ -20,6 +21,9 @@ app.add_middleware(CORSMiddleware,
 
 rag_pipeline = RAGPipeline()
 
+class RemoveDocRequest(BaseModel):
+    filenames: List[str]
+
 class Question(BaseModel):
     question: str
 
@@ -27,13 +31,14 @@ class Question(BaseModel):
 def upload_docs(
     corpus_name: str = Query(...),
     files: List[UploadFile] = File(...),
+    password: str = Depends(validate_password),
     api_key: str = Depends(validate_api_key)
 ):
     folder_path = f"temp_uploads/{corpus_name}"
     os.makedirs(folder_path, exist_ok=True)
 
     for file in files:
-        file_path = os.path.join(folder_path, file.filename)
+        file_path = join(folder_path, file.filename) # type: ignore
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
@@ -42,6 +47,59 @@ def upload_docs(
         return {"message": f"Corpus '{corpus_name}' initialized with {len(files)} files."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/list-docs")
+def list_docs(
+    api_key: str = Depends(validate_api_key)
+):
+    curr_corpus = rag_pipeline.corpus_name
+    if curr_corpus is None: raise HTTPException(status_code=404, detail=str("No corpus loaded."))
+
+    folder_path = f"temp_uploads/{curr_corpus}"
+    if not isdir(folder_path): raise HTTPException(status_code=404, detail=str(f"No file entry in {curr_corpus}"))
+
+    files = [f for f in os.listdir(folder_path) if isfile(join(folder_path, f))]
+
+    return files
+
+@app.post("/api/remove-docs")
+def remove_docs(
+    request: RemoveDocRequest,
+    api_key: str = Depends(validate_api_key),
+    password: str = Depends(validate_password)
+):
+    curr_corpus = rag_pipeline.corpus_name
+    print(">> current corpus:", curr_corpus)
+    if curr_corpus is None: raise HTTPException(status_code=404, detail=str("No corpus loaded."))
+  
+    folderpath = f"temp_uploads/{curr_corpus}"
+
+    removed_files = []
+    failed_files = []
+
+    for file in request.filenames:
+        fp = join(folderpath, file)
+
+        if not isfile(fp):
+            failed_files.append(f"File '{file}' not found.")
+
+        else:
+            try:
+                os.remove(fp)
+                removed_files.append(f"File '{file}' removed.")
+            except Exception as e:
+                failed_files.append(f"Error removing '{file}: {str(e)}")
+
+    try:
+        rag_pipeline.initialize(folderpath, curr_corpus)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    return {
+        "message": f"Corpus '{curr_corpus}' reinitialized.",
+        "removed_files": removed_files,
+        "failed_files": failed_files
+    }
 
 @app.post("/api/ask")
 def ask_question(payload: Question, api_key: str = Depends(validate_api_key)):
